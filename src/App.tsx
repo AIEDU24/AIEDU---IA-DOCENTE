@@ -529,7 +529,7 @@ export default function App() {
               <Lightbulb size={24} />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-slate-900 uppercase">AIEDU24</h1>
+              <h1 className="text-lg font-bold tracking-tight text-slate-900 uppercase">AIEDU - IA DOCENTE</h1>
               <div className="flex items-center gap-2">
                 <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Apoyo a la Labor Docente</p>
                 <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded uppercase tracking-tighter">Asesor MINEDU</span>
@@ -586,7 +586,7 @@ export default function App() {
               className="max-w-2xl mx-auto"
             >
               <div className="text-center mb-10">
-                <h2 className="text-3xl font-extrabold text-slate-900 mb-3">AIEDU24</h2>
+                <h2 className="text-3xl font-extrabold text-slate-900 mb-3">AIEDU - IA DOCENTE</h2>
                 <p className="text-slate-600">Optimiza tu tiempo pedagógico con nuestra plataforma de innovación educativa.</p>
               </div>
 
@@ -1469,7 +1469,7 @@ export default function App() {
 
       <footer className="max-w-5xl mx-auto px-4 py-12 border-t border-slate-200 mt-12 text-center">
         <p className="text-sm text-slate-500 font-medium">
-          &copy; 2026 AIEDU24. Apoyando el desarrollo de la labor docente con excelencia pedagógica.
+          &copy; 2026 AIEDU - IA DOCENTE. Apoyando el desarrollo de la labor docente con excelencia pedagógica.
         </p>
       </footer>
     </div>

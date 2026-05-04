@@ -2,13 +2,22 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ReportMetadata } from "../types";
 
 const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
+const isApiKeyMissing = !apiKey || apiKey === "undefined" || apiKey === "MY_GEMINI_API_KEY";
+
+if (isApiKeyMissing) {
   console.error("GEMINI_API_KEY is not set in the environment.");
 }
 
-const ai = new GoogleGenAI({ apiKey: apiKey || "" });
+const ai = new GoogleGenAI({ apiKey: isApiKeyMissing ? "MISSING_KEY" : apiKey });
+
+function checkApiKey() {
+  if (isApiKeyMissing) {
+    throw new Error("La clave de API (GEMINI_API_KEY) no está configurada. Si has desplegado fuera de AI Studio (ej. Vercel), asegúrate de añadirla en las variables de entorno.");
+  }
+}
 
 export async function extractDataFromImage(imageBase64: string, competenceNumber: number): Promise<string> {
+  checkApiKey();
   const model = "gemini-3-flash-preview";
   
   const prompt = `
@@ -85,6 +94,7 @@ export async function extractDataFromImage(imageBase64: string, competenceNumber
 }
 
 export async function extractCapacitiesFromImage(imageBase64: string): Promise<string> {
+  checkApiKey();
   const model = "gemini-3-flash-preview";
   
   const prompt = `
@@ -145,6 +155,7 @@ export async function extractCapacitiesFromImage(imageBase64: string): Promise<s
 }
 
 export async function identifyAndExtractImage(imageBase64: string): Promise<any> {
+  checkApiKey();
   const model = "gemini-3-flash-preview";
   
   const prompt = `
@@ -198,6 +209,7 @@ export async function identifyAndExtractImage(imageBase64: string): Promise<any>
 }
 
 export async function generateFinalReport(metadata: ReportMetadata, competences: any[]): Promise<string> {
+  checkApiKey();
   const model = "gemini-3.1-pro-preview";
   
   const prompt = `
@@ -288,6 +300,7 @@ export async function generateFinalReport(metadata: ReportMetadata, competences:
 }
 
 export async function generatePedagogicalDocument(metadata: ReportMetadata, reportContext: string, request: string, calendarImage: string | null = null): Promise<string> {
+  checkApiKey();
   const model = "gemini-3.1-pro-preview";
   
   const prompt = `
