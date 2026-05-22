@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 
 const app = express();
@@ -71,7 +70,7 @@ app.post("/api/gemini/extract-data", async (req, res) => {
     checkKey(key);
     const ai = getAiClient(key);
     
-    const model = "gemini-3-flash-preview";
+    const model = "gemini-3.5-flash";
     const prompt = `
       Actúa como un especialista en análisis de datos pedagógicos. 
       Extrae con precisión todos los datos numéricos de esta imagen de resultados de evaluación diagnóstica para la Competencia ${competenceNumber}.
@@ -88,9 +87,11 @@ app.post("/api/gemini/extract-data", async (req, res) => {
       Si detectas inconsistencias menores, ajústalos y añade una nota explicativa.
     `;
 
+    const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
     const imagePart = {
       inlineData: {
-        mimeType: "image/png",
+        mimeType,
         data: imageBase64.split(",")[1] || imageBase64,
       },
     };
@@ -157,7 +158,7 @@ app.post("/api/gemini/extract-capacities", async (req, res) => {
     checkKey(key);
     const ai = getAiClient(key);
     
-    const model = "gemini-3-flash-preview";
+    const model = "gemini-3.5-flash";
     const prompt = `
       Actúa como un especialista en análisis de datos pedagógicos. 
       Extrae con precisión todos los datos numéricos de esta imagen de la "Estadística de las capacidades según competencia".
@@ -170,9 +171,11 @@ app.post("/api/gemini/extract-capacities", async (req, res) => {
       - resultados: un array de objetos por sección con { seccion, capacidades: [{ nombre, porcentaje }] }
     `;
 
+    const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
     const imagePart = {
       inlineData: {
-        mimeType: "image/png",
+        mimeType,
         data: imageBase64.split(",")[1] || imageBase64,
       },
     };
@@ -227,7 +230,7 @@ app.post("/api/gemini/identify-image", async (req, res) => {
     checkKey(key);
     const ai = getAiClient(key);
     
-    const model = "gemini-3-flash-preview";
+    const model = "gemini-3.5-flash";
     const prompt = `
       Actúa como un especialista en análisis de datos pedagógicos. 
       Analiza esta imagen y determina si es:
@@ -251,9 +254,11 @@ app.post("/api/gemini/identify-image", async (req, res) => {
       }
     `;
 
+    const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
     const imagePart = {
       inlineData: {
-        mimeType: "image/png",
+        mimeType,
         data: imageBase64.split(",")[1] || imageBase64,
       },
     };
@@ -495,10 +500,12 @@ app.post("/api/gemini/generate-pedagogical-doc", async (req, res) => {
 
     const contents: any[] = [{ text: prompt }];
     if (calendarImage) {
+      const mimeMatch = calendarImage.match(/^data:([^;]+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
       contents.push({
         inlineData: {
-          mimeType: "image/jpeg",
-          data: calendarImage.split(",")[1]
+          mimeType,
+          data: calendarImage.split(",")[1] || calendarImage
         }
       });
     }
@@ -518,6 +525,7 @@ app.post("/api/gemini/generate-pedagogical-doc", async (req, res) => {
 // Configure Vite Dev Server as Middleware, or serve static assets in production
 const startServer = async () => {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
