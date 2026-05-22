@@ -76,8 +76,6 @@ export default function App() {
 
   const [finalReport, setFinalReport] = useState<string>('');
   const [pedagogicalDoc, setPedagogicalDoc] = useState<string>('');
-  const [lastUploadedType, setLastUploadedType] = useState<'REPORT' | 'PLANNING' | 'UNIT' | null>(null);
-  const [lastPlanningDoc, setLastPlanningDoc] = useState<string>('');
   const [lastUnitDoc, setLastUnitDoc] = useState<string>('');
   const [calendarImage, setCalendarImage] = useState<string | null>(null);
   const [docRequest, setDocRequest] = useState<string>('');
@@ -260,8 +258,6 @@ export default function App() {
       // All uploaded docs act as context for the assistant
       setFinalReport(text);
       setPedagogicalDoc('');
-      setLastUploadedType(type);
-      if (type === 'PLANNING') setLastPlanningDoc(text);
       if (type === 'UNIT') setLastUnitDoc(text);
       setIsUploadedDoc(true);
       
@@ -355,110 +351,6 @@ export default function App() {
     }
 
     setIsBulkProcessing(false);
-  };
-
-  const extractUnitDetailsFromPlanning = (doc: string, unitNum: number) => {
-    if (!doc) return null;
-
-    // Patterns for unit identifiers
-    const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
-    const roman = romanNumerals[unitNum - 1];
-    
-    const unitPatterns = [
-      new RegExp(`Unidad[\\sN°]*(?:n°|nro|#|\\.)?\\s*0?${unitNum}[:\\s\\.-]*?["'«]?(.*?)["'»]?\\s*(?:\\n|$)`, 'i'),
-      new RegExp(`(?:^|\\n)${unitNum}[°º]?\\s*Unidad[:\\s\\.-]*?["'«]?(.*?)["'»]?\\s*(?:\\n|$)`, 'i'),
-      new RegExp(`(?:^|\\n)${roman}\\s*Unidad[:\\s\\.-]*?["'«]?(.*?)["'»]?\\s*(?:\\n|$)`, 'i'),
-      new RegExp(`Unidad[\\sN°]*${roman}[:\\s\\.-]*?["'«]?(.*?)["'»]?\\s*(?:\\n|$)`, 'i'),
-      new RegExp(`(?:^|\\n)(?:UNIDAD|SESIÓN|S)\\s*0?${unitNum}[:\\s\\.-]*?["'«]?(.*?)["'»]?\\s*(?:\\n|$)`, 'i')
-    ];
-
-    let match = null;
-    let foundPattern = '';
-    for (const pattern of unitPatterns) {
-      match = doc.match(pattern);
-      if (match) {
-        foundPattern = match[0];
-        break;
-      }
-    }
-    
-    if (!match) {
-      // Even more aggressive fallback for headers like "1. TITULO" or "I. TITULO"
-      const simplePatterns = [
-        new RegExp(`(?:^|\\n)0?${unitNum}[\\.\\)]\\s+(.*?)(?:\\n|$)`, 'i'),
-        new RegExp(`(?:^|\\n)${roman}[\\.\\)]\\s+(.*?)(?:\\n|$)`, 'i')
-      ];
-      for (const pattern of simplePatterns) {
-        match = doc.match(pattern);
-        if (match) {
-          foundPattern = match[0];
-          break;
-        }
-      }
-    }
-
-    if (!match) return null;
-
-    return extractFromSection(doc, foundPattern, unitNum, match[1]);
-  };
-
-  const extractFromSection = (doc: string, fullMatchStr: string, unitNum: number, title: string) => {
-    const sectionStart = doc.indexOf(fullMatchStr);
-    let sectionEnd = doc.length;
-    
-    const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
-    const nextRoman = romanNumerals[unitNum];
-    
-    // Look for next boundary (Unit N+1)
-    const nextUnitRegex = new RegExp(`(?:Unidad|UNIDAD)[\\sN°]*(?:n°|nro|#|\\.)?\\s*0?${unitNum + 1}|(?:^|\\n)0?${unitNum + 1}[°º]?\\s*(?:Unidad|UNIDAD)|(?:^|\\n)${nextRoman}\\s+(?:Unidad|UNIDAD)`, 'i');
-    const nextMatch = doc.substring(sectionStart + fullMatchStr.length).match(nextUnitRegex);
-    if (nextMatch && nextMatch.index !== undefined) {
-      sectionEnd = sectionStart + fullMatchStr.length + nextMatch.index;
-    }
-
-    const section = doc.substring(sectionStart, sectionEnd);
-    
-    // Situation extraction
-    const situationMatch = section.match(/(?:Situación\s+significativa|Contexto|Problema|Eje\s+articulador)[\s\S]*?:?[\s]*([\s\S]*?)(?:\n\n|\n[A-Z][a-z]+:|\n\d+\.|\n[•\-\*]|$)/i);
-    
-    // Product extraction
-    const productMatch = section.match(/(?:Posible\s+)?(?:evidencia|producto|productos|resultado|tarea)[\s\S]*?:?[\s]*([\s\S]*?)(?:\n\n|\n[A-Z][a-z]+:|\n\d+\.|\n[•\-\*]|$)/i);
-    
-    // Competences extraction
-    let competences = '';
-    const competenceMatch = section.match(/(?:Competencias|Capacidades|Propósitos|Desempeños|Estándares)[\s\S]*?:?[\s]*([\s\S]*?)(?:\n\n|\n[A-Z][a-z]+:|\n\d+\.|\n[•\-\*]|$)/i);
-    
-    // Heuristic scan for specific curriculum competences
-    const compRegex = /(?:Resuelve\s+problemas\s+de|Se\s+comunica\s+oralmente|Lee\s+diversos\s+tipos|Escribe\s+diversos\s+tipos|Indaga\s+mediante\s+métodos|Explica\s+el\s+mundo\s+físico|Diseña\s+y\s+construye|Construye\s+su\s+identidad|Convive\s+y\s+participa|Construye\s+interpretaciones|Gestiona\s+responsablemente|Aprecia\s+de\s+manera\s+crítica|Crea\s+proyectos|Se\s+desenvuelve\s+en\s+entornos|Gestiona\s+su\s+aprendizaje)/gi;
-    const foundComps = section.match(compRegex);
-    
-    if (foundComps) {
-      competences = Array.from(new Set(foundComps)).join(', ');
-    } else if (competenceMatch && competenceMatch[1].trim().length > 3) {
-      competences = competenceMatch[1].trim();
-    }
-
-    return {
-      num: unitNum,
-      title: (title || '').trim().replace(/^[:\s\.-]+/, ''),
-      situation: situationMatch ? situationMatch[1].trim() : '',
-      product: productMatch ? productMatch[1].trim() : '',
-      competences: competences || 'No se detectaron competencias específicas en este bloque. Por favor, verificar el documento.'
-    };
-  };
-
-  const handleNextUnitClick = () => {
-    const nextUnit = currentUnit + 1;
-    const details = extractUnitDetailsFromPlanning(lastPlanningDoc || finalReport, nextUnit);
-    
-    let req = `Elabora la **Unidad de Aprendizaje N° ${nextUnit.toString().padStart(2, '0')}** completa basada en la programación anual.`;
-    
-    if (details) {
-      req = `Elabora la **Unidad N° ${details.num}** de Aprendizaje completa titulada "${details.title}".\n\n**Análisis de la planificación:**\n- **Situación significativa relacionada:** ${details.situation || '[no encontrada]'}\n- **Posible evidencia/producto:** ${details.product || '[no encontrados]'}\n- **Competencias del área que se desarrollarán:** ${details.competences || '[no encontradas]'}\n\nPlanifica la unidad en base a las competencias y producto o evidencia de la unidad.`;
-    }
-    
-    setDocRequest(req);
-    handleGeneratePedagogicalDoc(req);
   };
 
   const getOrdinal = (n: number) => {
@@ -567,9 +459,7 @@ export default function App() {
       if (lastGeneratedType === 'SESSION') {
         filename = `U${unit}-S${session}-${title || 'Sesion'}`;
       } else if (lastGeneratedType === 'UNIT') {
-        const yearMatch = metadata.date.match(/\d{4}/);
-        const year = yearMatch ? yearMatch[0] : new Date().getFullYear();
-        filename = `U${unit}-${year}-${title || 'Unidad'}`;
+        filename = `U${unit}-${title || 'Unidad'}`;
       }
     }
 
@@ -1374,12 +1264,7 @@ export default function App() {
                     <div className="flex gap-2 flex-wrap">
                       {[
                         { name: 'Programación Anual', icon: <Calendar size={14} />, prompt: 'Elabora una Programación Anual detallada basada en el diagnóstico.' },
-                        { 
-                          name: 'Unidad de Aprendizaje', 
-                          icon: <Layers size={14} />, 
-                          prompt: 'Elabora una Unidad de Aprendizaje completa basada en la programación.',
-                          isUnit: true
-                        },
+                        { name: 'Unidad de Aprendizaje', icon: <Layers size={14} />, prompt: 'Elabora una Unidad de Aprendizaje completa basada en la programación.' },
                         { name: 'Sesión de Aprendizaje', icon: <BookOpen size={14} />, prompt: 'Elabora una Sesión de Aprendizaje detallada con procesos pedagógicos y didácticos.' },
                         { name: 'Desarrollo Total de Sesión', icon: <Wand2 size={14} />, prompt: 'Desarrolla de manera completa y exhaustiva la sesión de aprendizaje, incluyendo todos los materiales, lecturas y actividades paso a paso.' },
                         { name: 'Evaluación de Unidad', icon: <CheckCircle2 size={14} />, prompt: 'Diseña una evaluación para la unidad de aprendizaje. Pregunta al usuario qué tipo de evaluación desea (Escrita, Desempeño, Portafolio, etc.) antes de proceder.' },
@@ -1389,25 +1274,8 @@ export default function App() {
                       ].map((item) => (
                         <button
                           key={item.name}
-                          onClick={() => {
-                            if ('isUnit' in item && item.isUnit) {
-                              const unitToGenerate = currentUnit > 0 ? (currentUnit + 1) : 1;
-                              const details = extractUnitDetailsFromPlanning(lastPlanningDoc || finalReport, unitToGenerate);
-                              if (details) {
-                                setDocRequest(`Elabora la **Unidad N° ${details.num}** de Aprendizaje completa titulada "${details.title}".\n\n**Análisis de la planificación:**\n- **Situación significativa relacionada:** ${details.situation || '[no encontrada]'}\n- **Posible evidencia/producto:** ${details.product || '[no encontrados]'}\n- **Competencias del área que se desarrollarán:** ${details.competences || '[no encontradas]'}\n\nPlanifica la unidad en base a las competencias y producto o evidencia de la unidad.`);
-                              } else {
-                                setDocRequest(`Elabora la **Unidad de Aprendizaje N° ${unitToGenerate.toString().padStart(2, '0')}** completa basada en la programación.`);
-                              }
-                            } else {
-                              setDocRequest(item.prompt);
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border",
-                            item.name === 'Unidad de Aprendizaje' && lastUploadedType === 'PLANNING' 
-                              ? "bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-200" 
-                              : "bg-slate-100 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600"
-                          )}
+                          onClick={() => setDocRequest(item.prompt)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-medium transition-colors border border-slate-200"
                         >
                           {item.icon}
                           {item.name}
@@ -1471,11 +1339,16 @@ export default function App() {
                       <div className="flex items-center gap-2">
                         {lastGeneratedType === 'UNIT' && (
                           <button
-                            onClick={handleNextUnitClick}
+                            onClick={() => {
+                              const nextUnit = currentUnit + 1;
+                              const req = `Elabora la Unidad de Aprendizaje N° ${nextUnit.toString().padStart(2, '0')} siguiendo la secuencia de la programación anual.`;
+                              setDocRequest(req);
+                              handleGeneratePedagogicalDoc(req);
+                            }}
                             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-sm font-bold text-sm"
                           >
                             <ArrowRight size={18} />
-                            Siguiente Unidad: (Unidad {(currentUnit + 1).toString().padStart(2, '0')})
+                            Siguiente Unidad (Unidad { (currentUnit + 1).toString().padStart(2, '0') })
                           </button>
                         )}
                         {lastGeneratedType === 'SESSION' && (
@@ -1527,7 +1400,12 @@ export default function App() {
                             <div className="space-y-2">
                               <p className="text-sm text-indigo-700">Has generado la Unidad {currentUnit}. ¿Deseas elaborar la <strong>Unidad {(currentUnit + 1).toString().padStart(2, '0')}</strong> de la programación anual?</p>
                               <button 
-                                onClick={handleNextUnitClick}
+                                onClick={() => {
+                                  const nextUnit = currentUnit + 1;
+                                  const req = `Elabora la Unidad de Aprendizaje N° ${nextUnit.toString().padStart(2, '0')} siguiendo la secuencia de la programación anual.`;
+                                  setDocRequest(req);
+                                  handleGeneratePedagogicalDoc(req);
+                                }}
                                 className="text-xs font-bold text-indigo-600 hover:underline"
                               >
                                 Generar Unidad {(currentUnit + 1).toString().padStart(2, '0')}
