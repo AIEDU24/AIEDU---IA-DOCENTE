@@ -14,8 +14,6 @@ import {
   Trash2, 
   Download,
   AlertCircle,
-  AlertTriangle,
-  Settings,
   School,
   User,
   Calendar,
@@ -44,14 +42,13 @@ import {
   Legend, 
   ResponsiveContainer 
 } from 'recharts';
-import { cn, resizeImage } from './lib/utils';
+import { cn } from './lib/utils';
 import { 
   extractDataFromImage, 
   extractCapacitiesFromImage, 
   generateFinalReport,
   generatePedagogicalDocument,
-  identifyAndExtractImage,
-  setApiKey
+  identifyAndExtractImage
 } from './lib/gemini';
 import { ReportMetadata, AppState, CompetenceEntry } from './types';
 
@@ -79,6 +76,8 @@ export default function App() {
 
   const [finalReport, setFinalReport] = useState<string>('');
   const [pedagogicalDoc, setPedagogicalDoc] = useState<string>('');
+  const [lastUploadedType, setLastUploadedType] = useState<'REPORT' | 'PLANNING' | 'UNIT' | null>(null);
+  const [lastPlanningDoc, setLastPlanningDoc] = useState<string>('');
   const [lastUnitDoc, setLastUnitDoc] = useState<string>('');
   const [calendarImage, setCalendarImage] = useState<string | null>(null);
   const [docRequest, setDocRequest] = useState<string>('');
@@ -92,14 +91,6 @@ export default function App() {
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [manualApiKey, setManualApiKey] = useState(localStorage.getItem('AIEDU_GEMINI_API_KEY') || '');
-
-  const handleSaveApiKey = () => {
-    setApiKey(manualApiKey);
-    setShowSettings(false);
-    setError(null);
-  };
 
   const handleMetadataChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -117,51 +108,55 @@ export default function App() {
   };
 
   const handleCompetenceImageUpload = async (id: number, file: File) => {
-    try {
-      setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'uploading' } : c));
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target?.result as string;
       
-      const base64 = await resizeImage(file);
+      setCompetences(prev => prev.map(c => c.id === id ? { ...c, competenceImage: base64, status: 'uploading' } : c));
       
-      setCompetences(prev => prev.map(c => c.id === id ? { ...c, competenceImage: base64 } : c));
-      
-      const extractedData = await extractDataFromImage(base64, id);
-      const cleanJson = extractedData.replace(/```json\n?|```/g, '').trim();
-      const parsedData = JSON.parse(cleanJson);
-      
-      setCompetences(prev => prev.map(c => c.id === id ? { 
-        ...c, 
-        competenceData: parsedData, 
-        status: c.capacitiesData ? 'done' : 'uploading' 
-      } : c));
-    } catch (err) {
-      console.error("Error extracting competence data:", err);
-      setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'error' } : c));
-      setError(err instanceof Error ? err.message : "Error al procesar la imagen de la Competencia " + id);
-    }
+      try {
+        const extractedData = await extractDataFromImage(base64, id);
+        const cleanJson = extractedData.replace(/```json\n?|```/g, '').trim();
+        const parsedData = JSON.parse(cleanJson);
+        
+        setCompetences(prev => prev.map(c => c.id === id ? { 
+          ...c, 
+          competenceData: parsedData, 
+          status: c.capacitiesData ? 'done' : 'uploading' 
+        } : c));
+      } catch (err) {
+        console.error("Error extracting competence data:", err);
+        setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'error' } : c));
+        setError("Error al procesar la imagen de la Competencia " + id);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCapacitiesImageUpload = async (id: number, file: File) => {
-    try {
-      setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'uploading' } : c));
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target?.result as string;
       
-      const base64 = await resizeImage(file);
+      setCompetences(prev => prev.map(c => c.id === id ? { ...c, capacitiesImage: base64, status: 'uploading' } : c));
       
-      setCompetences(prev => prev.map(c => c.id === id ? { ...c, capacitiesImage: base64 } : c));
-      
-      const extractedData = await extractCapacitiesFromImage(base64);
-      const cleanJson = extractedData.replace(/```json\n?|```/g, '').trim();
-      const parsedData = JSON.parse(cleanJson);
-      
-      setCompetences(prev => prev.map(c => c.id === id ? { 
-        ...c, 
-        capacitiesData: parsedData, 
-        status: c.competenceData ? 'done' : 'uploading' 
-      } : c));
-    } catch (err) {
-      console.error("Error extracting capacities data:", err);
-      setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'error' } : c));
-      setError(err instanceof Error ? err.message : "Error al procesar la estadística de capacidades de la Competencia " + id);
-    }
+      try {
+        const extractedData = await extractCapacitiesFromImage(base64);
+        const cleanJson = extractedData.replace(/```json\n?|```/g, '').trim();
+        const parsedData = JSON.parse(cleanJson);
+        
+        setCompetences(prev => prev.map(c => c.id === id ? { 
+          ...c, 
+          capacitiesData: parsedData, 
+          status: c.competenceData ? 'done' : 'uploading' 
+        } : c));
+      } catch (err) {
+        console.error("Error extracting capacities data:", err);
+        setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'error' } : c));
+        setError("Error al procesar la estadística de capacidades de la Competencia " + id);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const generateReport = async () => {
@@ -186,7 +181,7 @@ export default function App() {
       setState('COMPLETED');
     } catch (err) {
       console.error("Error generating report:", err);
-      setError(err instanceof Error ? err.message : "Error al generar el informe final.");
+      setError("Error al generar el informe final.");
       setState('COLLECTING');
     } finally {
       setIsGenerating(false);
@@ -248,7 +243,7 @@ export default function App() {
       
     } catch (err) {
       console.error("Error generating pedagogical document:", err);
-      setError(err instanceof Error ? err.message : "Error al generar el documento pedagógico.");
+      setError("Error al generar el documento pedagógico.");
     } finally {
       setIsGeneratingDoc(false);
     }
@@ -265,6 +260,8 @@ export default function App() {
       // All uploaded docs act as context for the assistant
       setFinalReport(text);
       setPedagogicalDoc('');
+      setLastUploadedType(type);
+      if (type === 'PLANNING') setLastPlanningDoc(text);
       if (type === 'UNIT') setLastUnitDoc(text);
       setIsUploadedDoc(true);
       
@@ -277,14 +274,12 @@ export default function App() {
     }
   };
 
-  const handleCalendarUpload = async (file: File) => {
-    try {
-      const base64 = await resizeImage(file);
-      setCalendarImage(base64);
-    } catch (err) {
-      console.error(err);
-      setError("Error al procesar la imagen de calendarización.");
-    }
+  const handleCalendarUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setCalendarImage(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleBulkUpload = async (files: FileList) => {
@@ -296,53 +291,60 @@ export default function App() {
     setError(null);
 
     const processFile = async (file: File) => {
-      try {
-        const base64 = await resizeImage(file);
-        const result = await identifyAndExtractImage(base64);
-        
-        setCompetences(prev => {
-          let targetId = result.competenceNumber;
-          
-          // If no competence number was identified, try to find an empty slot
-          if (!targetId) {
-            const emptySlot = prev.find(c => 
-              result.type === 'RESULTS' ? !c.competenceImage : !c.capacitiesImage
-            );
-            targetId = emptySlot ? emptySlot.id : prev.length + 1;
-          }
+      return new Promise<void>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const base64 = e.target?.result as string;
+          try {
+            const result = await identifyAndExtractImage(base64);
+            
+            setCompetences(prev => {
+              let targetId = result.competenceNumber;
+              
+              // If no competence number was identified, try to find an empty slot
+              if (!targetId) {
+                const emptySlot = prev.find(c => 
+                  result.type === 'RESULTS' ? !c.competenceImage : !c.capacitiesImage
+                );
+                targetId = emptySlot ? emptySlot.id : prev.length + 1;
+              }
 
-          const existing = prev.find(c => c.id === targetId);
-          
-          if (existing) {
-            return prev.map(c => c.id === targetId ? {
-              ...c,
-              ...(result.type === 'RESULTS' ? {
-                competenceImage: base64,
-                competenceData: result.data,
-              } : {
-                capacitiesImage: base64,
-                capacitiesData: result.data,
-              }),
-              status: (result.type === 'RESULTS' ? (c.capacitiesData ? 'done' : 'uploading') : (c.competenceData ? 'done' : 'uploading'))
-            } : c);
-          } else {
-            // Create new competence
-            return [...prev, {
-              id: targetId,
-              competenceImage: result.type === 'RESULTS' ? base64 : null,
-              competenceData: result.type === 'RESULTS' ? result.data : null,
-              capacitiesImage: result.type === 'CAPACITIES' ? base64 : null,
-              capacitiesData: result.type === 'CAPACITIES' ? result.data : null,
-              status: 'uploading'
-            }];
+              const existing = prev.find(c => c.id === targetId);
+              
+              if (existing) {
+                return prev.map(c => c.id === targetId ? {
+                  ...c,
+                  ...(result.type === 'RESULTS' ? {
+                    competenceImage: base64,
+                    competenceData: result.data,
+                  } : {
+                    capacitiesImage: base64,
+                    capacitiesData: result.data,
+                  }),
+                  status: (result.type === 'RESULTS' ? (c.capacitiesData ? 'done' : 'uploading') : (c.competenceData ? 'done' : 'uploading'))
+                } : c);
+              } else {
+                // Create new competence
+                return [...prev, {
+                  id: targetId,
+                  competenceImage: result.type === 'RESULTS' ? base64 : null,
+                  competenceData: result.type === 'RESULTS' ? result.data : null,
+                  capacitiesImage: result.type === 'CAPACITIES' ? base64 : null,
+                  capacitiesData: result.type === 'CAPACITIES' ? result.data : null,
+                  status: 'uploading'
+                }];
+              }
+            });
+          } catch (err) {
+            console.error("Error processing bulk file:", err);
+            setError("Error al procesar uno de los archivos.");
+          } finally {
+            setBulkProgress(p => ({ ...p, current: p.current + 1 }));
+            resolve();
           }
-        });
-      } catch (err) {
-        console.error("Error processing bulk file:", err);
-        setError(err instanceof Error ? err.message : "Error al procesar uno de los archivos.");
-      } finally {
-        setBulkProgress(p => ({ ...p, current: p.current + 1 }));
-      }
+        };
+        reader.readAsDataURL(file);
+      });
     };
 
     // Process in batches of 3 to avoid hitting rate limits too hard
@@ -353,6 +355,110 @@ export default function App() {
     }
 
     setIsBulkProcessing(false);
+  };
+
+  const extractUnitDetailsFromPlanning = (doc: string, unitNum: number) => {
+    if (!doc) return null;
+
+    // Patterns for unit identifiers
+    const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+    const roman = romanNumerals[unitNum - 1];
+    
+    const unitPatterns = [
+      new RegExp(`Unidad[\\sN°]*(?:n°|nro|#|\\.)?\\s*0?${unitNum}[:\\s\\.-]*?["'«]?(.*?)["'»]?\\s*(?:\\n|$)`, 'i'),
+      new RegExp(`(?:^|\\n)${unitNum}[°º]?\\s*Unidad[:\\s\\.-]*?["'«]?(.*?)["'»]?\\s*(?:\\n|$)`, 'i'),
+      new RegExp(`(?:^|\\n)${roman}\\s*Unidad[:\\s\\.-]*?["'«]?(.*?)["'»]?\\s*(?:\\n|$)`, 'i'),
+      new RegExp(`Unidad[\\sN°]*${roman}[:\\s\\.-]*?["'«]?(.*?)["'»]?\\s*(?:\\n|$)`, 'i'),
+      new RegExp(`(?:^|\\n)(?:UNIDAD|SESIÓN|S)\\s*0?${unitNum}[:\\s\\.-]*?["'«]?(.*?)["'»]?\\s*(?:\\n|$)`, 'i')
+    ];
+
+    let match = null;
+    let foundPattern = '';
+    for (const pattern of unitPatterns) {
+      match = doc.match(pattern);
+      if (match) {
+        foundPattern = match[0];
+        break;
+      }
+    }
+    
+    if (!match) {
+      // Even more aggressive fallback for headers like "1. TITULO" or "I. TITULO"
+      const simplePatterns = [
+        new RegExp(`(?:^|\\n)0?${unitNum}[\\.\\)]\\s+(.*?)(?:\\n|$)`, 'i'),
+        new RegExp(`(?:^|\\n)${roman}[\\.\\)]\\s+(.*?)(?:\\n|$)`, 'i')
+      ];
+      for (const pattern of simplePatterns) {
+        match = doc.match(pattern);
+        if (match) {
+          foundPattern = match[0];
+          break;
+        }
+      }
+    }
+
+    if (!match) return null;
+
+    return extractFromSection(doc, foundPattern, unitNum, match[1]);
+  };
+
+  const extractFromSection = (doc: string, fullMatchStr: string, unitNum: number, title: string) => {
+    const sectionStart = doc.indexOf(fullMatchStr);
+    let sectionEnd = doc.length;
+    
+    const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+    const nextRoman = romanNumerals[unitNum];
+    
+    // Look for next boundary (Unit N+1)
+    const nextUnitRegex = new RegExp(`(?:Unidad|UNIDAD)[\\sN°]*(?:n°|nro|#|\\.)?\\s*0?${unitNum + 1}|(?:^|\\n)0?${unitNum + 1}[°º]?\\s*(?:Unidad|UNIDAD)|(?:^|\\n)${nextRoman}\\s+(?:Unidad|UNIDAD)`, 'i');
+    const nextMatch = doc.substring(sectionStart + fullMatchStr.length).match(nextUnitRegex);
+    if (nextMatch && nextMatch.index !== undefined) {
+      sectionEnd = sectionStart + fullMatchStr.length + nextMatch.index;
+    }
+
+    const section = doc.substring(sectionStart, sectionEnd);
+    
+    // Situation extraction
+    const situationMatch = section.match(/(?:Situación\s+significativa|Contexto|Problema|Eje\s+articulador)[\s\S]*?:?[\s]*([\s\S]*?)(?:\n\n|\n[A-Z][a-z]+:|\n\d+\.|\n[•\-\*]|$)/i);
+    
+    // Product extraction
+    const productMatch = section.match(/(?:Posible\s+)?(?:evidencia|producto|productos|resultado|tarea)[\s\S]*?:?[\s]*([\s\S]*?)(?:\n\n|\n[A-Z][a-z]+:|\n\d+\.|\n[•\-\*]|$)/i);
+    
+    // Competences extraction
+    let competences = '';
+    const competenceMatch = section.match(/(?:Competencias|Capacidades|Propósitos|Desempeños|Estándares)[\s\S]*?:?[\s]*([\s\S]*?)(?:\n\n|\n[A-Z][a-z]+:|\n\d+\.|\n[•\-\*]|$)/i);
+    
+    // Heuristic scan for specific curriculum competences
+    const compRegex = /(?:Resuelve\s+problemas\s+de|Se\s+comunica\s+oralmente|Lee\s+diversos\s+tipos|Escribe\s+diversos\s+tipos|Indaga\s+mediante\s+métodos|Explica\s+el\s+mundo\s+físico|Diseña\s+y\s+construye|Construye\s+su\s+identidad|Convive\s+y\s+participa|Construye\s+interpretaciones|Gestiona\s+responsablemente|Aprecia\s+de\s+manera\s+crítica|Crea\s+proyectos|Se\s+desenvuelve\s+en\s+entornos|Gestiona\s+su\s+aprendizaje)/gi;
+    const foundComps = section.match(compRegex);
+    
+    if (foundComps) {
+      competences = Array.from(new Set(foundComps)).join(', ');
+    } else if (competenceMatch && competenceMatch[1].trim().length > 3) {
+      competences = competenceMatch[1].trim();
+    }
+
+    return {
+      num: unitNum,
+      title: (title || '').trim().replace(/^[:\s\.-]+/, ''),
+      situation: situationMatch ? situationMatch[1].trim() : '',
+      product: productMatch ? productMatch[1].trim() : '',
+      competences: competences || 'No se detectaron competencias específicas en este bloque. Por favor, verificar el documento.'
+    };
+  };
+
+  const handleNextUnitClick = () => {
+    const nextUnit = currentUnit + 1;
+    const details = extractUnitDetailsFromPlanning(lastPlanningDoc || finalReport, nextUnit);
+    
+    let req = `Elabora la **Unidad de Aprendizaje N° ${nextUnit.toString().padStart(2, '0')}** completa basada en la programación anual.`;
+    
+    if (details) {
+      req = `Elabora la **Unidad N° ${details.num}** de Aprendizaje completa titulada "${details.title}".\n\n**Análisis de la planificación:**\n- **Situación significativa relacionada:** ${details.situation || '[no encontrada]'}\n- **Posible evidencia/producto:** ${details.product || '[no encontrados]'}\n- **Competencias del área que se desarrollarán:** ${details.competences || '[no encontradas]'}\n\nPlanifica la unidad en base a las competencias y producto o evidencia de la unidad.`;
+    }
+    
+    setDocRequest(req);
+    handleGeneratePedagogicalDoc(req);
   };
 
   const getOrdinal = (n: number) => {
@@ -461,7 +567,9 @@ export default function App() {
       if (lastGeneratedType === 'SESSION') {
         filename = `U${unit}-S${session}-${title || 'Sesion'}`;
       } else if (lastGeneratedType === 'UNIT') {
-        filename = `U${unit}-${title || 'Unidad'}`;
+        const yearMatch = metadata.date.match(/\d{4}/);
+        const year = yearMatch ? yearMatch[0] : new Date().getFullYear();
+        filename = `U${unit}-${year}-${title || 'Unidad'}`;
       }
     }
 
@@ -531,7 +639,7 @@ export default function App() {
               <Lightbulb size={24} />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-slate-900 uppercase">AIEDU - IA DOCENTE</h1>
+              <h1 className="text-lg font-bold tracking-tight text-slate-900 uppercase">AIEDU24</h1>
               <div className="flex items-center gap-2">
                 <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Apoyo a la Labor Docente</p>
                 <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded uppercase tracking-tighter">Asesor MINEDU</span>
@@ -540,13 +648,6 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setShowSettings(true)}
-              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-              title="Configurar API Key"
-            >
-              <Settings size={20} />
-            </button>
             {state === 'COMPLETED' && (
               <>
                 <button 
@@ -595,7 +696,7 @@ export default function App() {
               className="max-w-2xl mx-auto"
             >
               <div className="text-center mb-10">
-                <h2 className="text-3xl font-extrabold text-slate-900 mb-3">AIEDU - IA DOCENTE</h2>
+                <h2 className="text-3xl font-extrabold text-slate-900 mb-3">AIEDU24</h2>
                 <p className="text-slate-600">Optimiza tu tiempo pedagógico con nuestra plataforma de innovación educativa.</p>
               </div>
 
@@ -894,7 +995,7 @@ export default function App() {
               {error && (
                 <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-red-800">
                   <AlertCircle size={20} className="shrink-0 mt-0.5" />
-                  <p className="text-sm font-medium whitespace-pre-line">{error}</p>
+                  <p className="text-sm font-medium">{error}</p>
                 </div>
               )}
 
@@ -1273,7 +1374,12 @@ export default function App() {
                     <div className="flex gap-2 flex-wrap">
                       {[
                         { name: 'Programación Anual', icon: <Calendar size={14} />, prompt: 'Elabora una Programación Anual detallada basada en el diagnóstico.' },
-                        { name: 'Unidad de Aprendizaje', icon: <Layers size={14} />, prompt: 'Elabora una Unidad de Aprendizaje completa basada en la programación.' },
+                        { 
+                          name: 'Unidad de Aprendizaje', 
+                          icon: <Layers size={14} />, 
+                          prompt: 'Elabora una Unidad de Aprendizaje completa basada en la programación.',
+                          isUnit: true
+                        },
                         { name: 'Sesión de Aprendizaje', icon: <BookOpen size={14} />, prompt: 'Elabora una Sesión de Aprendizaje detallada con procesos pedagógicos y didácticos.' },
                         { name: 'Desarrollo Total de Sesión', icon: <Wand2 size={14} />, prompt: 'Desarrolla de manera completa y exhaustiva la sesión de aprendizaje, incluyendo todos los materiales, lecturas y actividades paso a paso.' },
                         { name: 'Evaluación de Unidad', icon: <CheckCircle2 size={14} />, prompt: 'Diseña una evaluación para la unidad de aprendizaje. Pregunta al usuario qué tipo de evaluación desea (Escrita, Desempeño, Portafolio, etc.) antes de proceder.' },
@@ -1283,8 +1389,25 @@ export default function App() {
                       ].map((item) => (
                         <button
                           key={item.name}
-                          onClick={() => setDocRequest(item.prompt)}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-medium transition-colors border border-slate-200"
+                          onClick={() => {
+                            if ('isUnit' in item && item.isUnit) {
+                              const unitToGenerate = currentUnit > 0 ? (currentUnit + 1) : 1;
+                              const details = extractUnitDetailsFromPlanning(lastPlanningDoc || finalReport, unitToGenerate);
+                              if (details) {
+                                setDocRequest(`Elabora la **Unidad N° ${details.num}** de Aprendizaje completa titulada "${details.title}".\n\n**Análisis de la planificación:**\n- **Situación significativa relacionada:** ${details.situation || '[no encontrada]'}\n- **Posible evidencia/producto:** ${details.product || '[no encontrados]'}\n- **Competencias del área que se desarrollarán:** ${details.competences || '[no encontradas]'}\n\nPlanifica la unidad en base a las competencias y producto o evidencia de la unidad.`);
+                              } else {
+                                setDocRequest(`Elabora la **Unidad de Aprendizaje N° ${unitToGenerate.toString().padStart(2, '0')}** completa basada en la programación.`);
+                              }
+                            } else {
+                              setDocRequest(item.prompt);
+                            }
+                          }}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+                            item.name === 'Unidad de Aprendizaje' && lastUploadedType === 'PLANNING' 
+                              ? "bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-200" 
+                              : "bg-slate-100 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600"
+                          )}
                         >
                           {item.icon}
                           {item.name}
@@ -1313,17 +1436,6 @@ export default function App() {
                       className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-[120px]"
                     />
                   </div>
-                  
-                  {error && error.includes('API Key') && (
-                    <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm whitespace-pre-line font-medium shadow-sm">
-                      <div className="flex items-center gap-2 mb-2 font-bold text-amber-900 uppercase tracking-tight">
-                        <AlertTriangle size={18} />
-                        Acción Requerida
-                      </div>
-                      {error}
-                    </div>
-                  )}
-
                   <div className="flex justify-end">
                     <button
                       onClick={() => handleGeneratePedagogicalDoc()}
@@ -1359,16 +1471,11 @@ export default function App() {
                       <div className="flex items-center gap-2">
                         {lastGeneratedType === 'UNIT' && (
                           <button
-                            onClick={() => {
-                              const nextUnit = currentUnit + 1;
-                              const req = `Elabora la Unidad de Aprendizaje N° ${nextUnit.toString().padStart(2, '0')} siguiendo la secuencia de la programación anual.`;
-                              setDocRequest(req);
-                              handleGeneratePedagogicalDoc(req);
-                            }}
+                            onClick={handleNextUnitClick}
                             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-sm font-bold text-sm"
                           >
                             <ArrowRight size={18} />
-                            Siguiente Unidad (Unidad { (currentUnit + 1).toString().padStart(2, '0') })
+                            Siguiente Unidad: (Unidad {(currentUnit + 1).toString().padStart(2, '0')})
                           </button>
                         )}
                         {lastGeneratedType === 'SESSION' && (
@@ -1420,12 +1527,7 @@ export default function App() {
                             <div className="space-y-2">
                               <p className="text-sm text-indigo-700">Has generado la Unidad {currentUnit}. ¿Deseas elaborar la <strong>Unidad {(currentUnit + 1).toString().padStart(2, '0')}</strong> de la programación anual?</p>
                               <button 
-                                onClick={() => {
-                                  const nextUnit = currentUnit + 1;
-                                  const req = `Elabora la Unidad de Aprendizaje N° ${nextUnit.toString().padStart(2, '0')} siguiendo la secuencia de la programación anual.`;
-                                  setDocRequest(req);
-                                  handleGeneratePedagogicalDoc(req);
-                                }}
+                                onClick={handleNextUnitClick}
                                 className="text-xs font-bold text-indigo-600 hover:underline"
                               >
                                 Generar Unidad {(currentUnit + 1).toString().padStart(2, '0')}
@@ -1489,63 +1591,9 @@ export default function App() {
 
       <footer className="max-w-5xl mx-auto px-4 py-12 border-t border-slate-200 mt-12 text-center">
         <p className="text-sm text-slate-500 font-medium">
-          &copy; 2026 AIEDU - IA DOCENTE. Apoyando el desarrollo de la labor docente con excelencia pedagógica.
+          &copy; 2026 AIEDU24. Apoyando el desarrollo de la labor docente con excelencia pedagógica.
         </p>
       </footer>
-
-      {/* Settings Modal */}
-      <AnimatePresence>
-        {showSettings && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
-            >
-              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                  <Settings className="text-indigo-600" size={24} />
-                  Configuración
-                </h3>
-                <button 
-                  onClick={() => setShowSettings(false)}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-400"
-                >
-                  <Plus className="rotate-45" size={24} />
-                </button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    Gemini API Key
-                  </label>
-                  <input 
-                    type="password"
-                    value={manualApiKey}
-                    onChange={(e) => setManualApiKey(e.target.value)}
-                    placeholder="Pega aquí tu clave de API (AI Studio)"
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-                  />
-                  <p className="mt-2 text-xs text-slate-500 leading-relaxed">
-                    Si no tienes una clave, puedes obtenerla gratis en <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-600 font-bold hover:underline">Google AI Studio</a>. Esta clave se guardará solo en tu navegador.
-                  </p>
-                </div>
-                
-                <div className="pt-2">
-                  <button 
-                    onClick={handleSaveApiKey}
-                    className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle2 size={18} />
-                    Guardar Configuración
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
