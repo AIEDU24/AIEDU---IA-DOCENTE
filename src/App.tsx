@@ -14,6 +14,8 @@ import {
   Trash2, 
   Download,
   AlertCircle,
+  AlertTriangle,
+  Settings,
   School,
   User,
   Calendar,
@@ -42,13 +44,14 @@ import {
   Legend, 
   ResponsiveContainer 
 } from 'recharts';
-import { cn } from './lib/utils';
+import { cn, resizeImage } from './lib/utils';
 import { 
   extractDataFromImage, 
   extractCapacitiesFromImage, 
   generateFinalReport,
   generatePedagogicalDocument,
-  identifyAndExtractImage
+  identifyAndExtractImage,
+  setApiKey
 } from './lib/gemini';
 import { ReportMetadata, AppState, CompetenceEntry } from './types';
 
@@ -89,6 +92,14 @@ export default function App() {
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [manualApiKey, setManualApiKey] = useState(localStorage.getItem('AIEDU_GEMINI_API_KEY') || '');
+
+  const handleSaveApiKey = () => {
+    setApiKey(manualApiKey);
+    setShowSettings(false);
+    setError(null);
+  };
 
   const handleMetadataChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -106,55 +117,51 @@ export default function App() {
   };
 
   const handleCompetenceImageUpload = async (id: number, file: File) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const base64 = e.target?.result as string;
+    try {
+      setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'uploading' } : c));
       
-      setCompetences(prev => prev.map(c => c.id === id ? { ...c, competenceImage: base64, status: 'uploading' } : c));
+      const base64 = await resizeImage(file);
       
-      try {
-        const extractedData = await extractDataFromImage(base64, id);
-        const cleanJson = extractedData.replace(/```json\n?|```/g, '').trim();
-        const parsedData = JSON.parse(cleanJson);
-        
-        setCompetences(prev => prev.map(c => c.id === id ? { 
-          ...c, 
-          competenceData: parsedData, 
-          status: c.capacitiesData ? 'done' : 'uploading' 
-        } : c));
-      } catch (err) {
-        console.error("Error extracting competence data:", err);
-        setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'error' } : c));
-        setError("Error al procesar la imagen de la Competencia " + id);
-      }
-    };
-    reader.readAsDataURL(file);
+      setCompetences(prev => prev.map(c => c.id === id ? { ...c, competenceImage: base64 } : c));
+      
+      const extractedData = await extractDataFromImage(base64, id);
+      const cleanJson = extractedData.replace(/```json\n?|```/g, '').trim();
+      const parsedData = JSON.parse(cleanJson);
+      
+      setCompetences(prev => prev.map(c => c.id === id ? { 
+        ...c, 
+        competenceData: parsedData, 
+        status: c.capacitiesData ? 'done' : 'uploading' 
+      } : c));
+    } catch (err) {
+      console.error("Error extracting competence data:", err);
+      setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'error' } : c));
+      setError(err instanceof Error ? err.message : "Error al procesar la imagen de la Competencia " + id);
+    }
   };
 
   const handleCapacitiesImageUpload = async (id: number, file: File) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const base64 = e.target?.result as string;
+    try {
+      setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'uploading' } : c));
       
-      setCompetences(prev => prev.map(c => c.id === id ? { ...c, capacitiesImage: base64, status: 'uploading' } : c));
+      const base64 = await resizeImage(file);
       
-      try {
-        const extractedData = await extractCapacitiesFromImage(base64);
-        const cleanJson = extractedData.replace(/```json\n?|```/g, '').trim();
-        const parsedData = JSON.parse(cleanJson);
-        
-        setCompetences(prev => prev.map(c => c.id === id ? { 
-          ...c, 
-          capacitiesData: parsedData, 
-          status: c.competenceData ? 'done' : 'uploading' 
-        } : c));
-      } catch (err) {
-        console.error("Error extracting capacities data:", err);
-        setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'error' } : c));
-        setError("Error al procesar la estadística de capacidades de la Competencia " + id);
-      }
-    };
-    reader.readAsDataURL(file);
+      setCompetences(prev => prev.map(c => c.id === id ? { ...c, capacitiesImage: base64 } : c));
+      
+      const extractedData = await extractCapacitiesFromImage(base64);
+      const cleanJson = extractedData.replace(/```json\n?|```/g, '').trim();
+      const parsedData = JSON.parse(cleanJson);
+      
+      setCompetences(prev => prev.map(c => c.id === id ? { 
+        ...c, 
+        capacitiesData: parsedData, 
+        status: c.competenceData ? 'done' : 'uploading' 
+      } : c));
+    } catch (err) {
+      console.error("Error extracting capacities data:", err);
+      setCompetences(prev => prev.map(c => c.id === id ? { ...c, status: 'error' } : c));
+      setError(err instanceof Error ? err.message : "Error al procesar la estadística de capacidades de la Competencia " + id);
+    }
   };
 
   const generateReport = async () => {
@@ -179,7 +186,7 @@ export default function App() {
       setState('COMPLETED');
     } catch (err) {
       console.error("Error generating report:", err);
-      setError("Error al generar el informe final.");
+      setError(err instanceof Error ? err.message : "Error al generar el informe final.");
       setState('COLLECTING');
     } finally {
       setIsGenerating(false);
@@ -241,7 +248,7 @@ export default function App() {
       
     } catch (err) {
       console.error("Error generating pedagogical document:", err);
-      setError("Error al generar el documento pedagógico.");
+      setError(err instanceof Error ? err.message : "Error al generar el documento pedagógico.");
     } finally {
       setIsGeneratingDoc(false);
     }
@@ -270,12 +277,14 @@ export default function App() {
     }
   };
 
-  const handleCalendarUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setCalendarImage(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+  const handleCalendarUpload = async (file: File) => {
+    try {
+      const base64 = await resizeImage(file);
+      setCalendarImage(base64);
+    } catch (err) {
+      console.error(err);
+      setError("Error al procesar la imagen de calendarización.");
+    }
   };
 
   const handleBulkUpload = async (files: FileList) => {
@@ -287,60 +296,53 @@ export default function App() {
     setError(null);
 
     const processFile = async (file: File) => {
-      return new Promise<void>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const base64 = e.target?.result as string;
-          try {
-            const result = await identifyAndExtractImage(base64);
-            
-            setCompetences(prev => {
-              let targetId = result.competenceNumber;
-              
-              // If no competence number was identified, try to find an empty slot
-              if (!targetId) {
-                const emptySlot = prev.find(c => 
-                  result.type === 'RESULTS' ? !c.competenceImage : !c.capacitiesImage
-                );
-                targetId = emptySlot ? emptySlot.id : prev.length + 1;
-              }
-
-              const existing = prev.find(c => c.id === targetId);
-              
-              if (existing) {
-                return prev.map(c => c.id === targetId ? {
-                  ...c,
-                  ...(result.type === 'RESULTS' ? {
-                    competenceImage: base64,
-                    competenceData: result.data,
-                  } : {
-                    capacitiesImage: base64,
-                    capacitiesData: result.data,
-                  }),
-                  status: (result.type === 'RESULTS' ? (c.capacitiesData ? 'done' : 'uploading') : (c.competenceData ? 'done' : 'uploading'))
-                } : c);
-              } else {
-                // Create new competence
-                return [...prev, {
-                  id: targetId,
-                  competenceImage: result.type === 'RESULTS' ? base64 : null,
-                  competenceData: result.type === 'RESULTS' ? result.data : null,
-                  capacitiesImage: result.type === 'CAPACITIES' ? base64 : null,
-                  capacitiesData: result.type === 'CAPACITIES' ? result.data : null,
-                  status: 'uploading'
-                }];
-              }
-            });
-          } catch (err) {
-            console.error("Error processing bulk file:", err);
-            setError("Error al procesar uno de los archivos.");
-          } finally {
-            setBulkProgress(p => ({ ...p, current: p.current + 1 }));
-            resolve();
+      try {
+        const base64 = await resizeImage(file);
+        const result = await identifyAndExtractImage(base64);
+        
+        setCompetences(prev => {
+          let targetId = result.competenceNumber;
+          
+          // If no competence number was identified, try to find an empty slot
+          if (!targetId) {
+            const emptySlot = prev.find(c => 
+              result.type === 'RESULTS' ? !c.competenceImage : !c.capacitiesImage
+            );
+            targetId = emptySlot ? emptySlot.id : prev.length + 1;
           }
-        };
-        reader.readAsDataURL(file);
-      });
+
+          const existing = prev.find(c => c.id === targetId);
+          
+          if (existing) {
+            return prev.map(c => c.id === targetId ? {
+              ...c,
+              ...(result.type === 'RESULTS' ? {
+                competenceImage: base64,
+                competenceData: result.data,
+              } : {
+                capacitiesImage: base64,
+                capacitiesData: result.data,
+              }),
+              status: (result.type === 'RESULTS' ? (c.capacitiesData ? 'done' : 'uploading') : (c.competenceData ? 'done' : 'uploading'))
+            } : c);
+          } else {
+            // Create new competence
+            return [...prev, {
+              id: targetId,
+              competenceImage: result.type === 'RESULTS' ? base64 : null,
+              competenceData: result.type === 'RESULTS' ? result.data : null,
+              capacitiesImage: result.type === 'CAPACITIES' ? base64 : null,
+              capacitiesData: result.type === 'CAPACITIES' ? result.data : null,
+              status: 'uploading'
+            }];
+          }
+        });
+      } catch (err) {
+        console.error("Error processing bulk file:", err);
+        setError("Error al procesar uno de los archivos.");
+      } finally {
+        setBulkProgress(p => ({ ...p, current: p.current + 1 }));
+      }
     };
 
     // Process in batches of 3 to avoid hitting rate limits too hard
@@ -538,6 +540,13 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+              title="Configurar API Key"
+            >
+              <Settings size={20} />
+            </button>
             {state === 'COMPLETED' && (
               <>
                 <button 
@@ -885,7 +894,7 @@ export default function App() {
               {error && (
                 <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-red-800">
                   <AlertCircle size={20} className="shrink-0 mt-0.5" />
-                  <p className="text-sm font-medium">{error}</p>
+                  <p className="text-sm font-medium whitespace-pre-line">{error}</p>
                 </div>
               )}
 
@@ -1304,6 +1313,17 @@ export default function App() {
                       className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-[120px]"
                     />
                   </div>
+                  
+                  {error && error.includes('API Key') && (
+                    <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm whitespace-pre-line font-medium shadow-sm">
+                      <div className="flex items-center gap-2 mb-2 font-bold text-amber-900 uppercase tracking-tight">
+                        <AlertTriangle size={18} />
+                        Acción Requerida
+                      </div>
+                      {error}
+                    </div>
+                  )}
+
                   <div className="flex justify-end">
                     <button
                       onClick={() => handleGeneratePedagogicalDoc()}
@@ -1472,6 +1492,60 @@ export default function App() {
           &copy; 2026 AIEDU - IA DOCENTE. Apoyando el desarrollo de la labor docente con excelencia pedagógica.
         </p>
       </footer>
+
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {showSettings && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <Settings className="text-indigo-600" size={24} />
+                  Configuración
+                </h3>
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-400"
+                >
+                  <Plus className="rotate-45" size={24} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Gemini API Key
+                  </label>
+                  <input 
+                    type="password"
+                    value={manualApiKey}
+                    onChange={(e) => setManualApiKey(e.target.value)}
+                    placeholder="Pega aquí tu clave de API (AI Studio)"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
+                  />
+                  <p className="mt-2 text-xs text-slate-500 leading-relaxed">
+                    Si no tienes una clave, puedes obtenerla gratis en <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-indigo-600 font-bold hover:underline">Google AI Studio</a>. Esta clave se guardará solo en tu navegador.
+                  </p>
+                </div>
+                
+                <div className="pt-2">
+                  <button 
+                    onClick={handleSaveApiKey}
+                    className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 size={18} />
+                    Guardar Configuración
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

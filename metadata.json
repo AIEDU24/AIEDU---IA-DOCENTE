@@ -2,5 +2,7 @@
   "name": "AIEDU - IA DOCENTE",
   "description": "Plataforma inteligente de apoyo a la labor docente para la generación de informes diagnósticos, programación anual y planificación curricular basada en el CNEB.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
