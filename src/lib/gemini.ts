@@ -23,6 +23,25 @@ const getHeaders = () => {
 };
 
 /**
+ * Helper to extract and format clean, actionable error messages from the server response.
+ */
+async function handleResponseError(res: Response, defaultMessage: string): Promise<never> {
+  let detail = "";
+  try {
+    const text = await res.clone().text();
+    try {
+      const data = JSON.parse(text);
+      detail = data.error || data.message || JSON.stringify(data);
+    } catch {
+      detail = text.substring(0, 300);
+    }
+  } catch {
+    detail = "No se pudo leer la respuesta del servidor.";
+  }
+  throw new Error(`${defaultMessage}. Detalles: ${detail}`);
+}
+
+/**
  * Proxy function to extract competence data from base64 image on the server.
  */
 export async function extractDataFromImage(imageBase64: string, competenceNumber: number): Promise<string> {
@@ -33,8 +52,7 @@ export async function extractDataFromImage(imageBase64: string, competenceNumber
   });
   
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Error al extraer datos cuantitativos de competencia");
+    await handleResponseError(res, "Error al extraer datos cuantitativos de competencia");
   }
   
   const data = await res.json();
@@ -52,8 +70,7 @@ export async function extractCapacitiesFromImage(imageBase64: string): Promise<s
   });
   
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Error al extraer estadísticas de capacidades");
+    await handleResponseError(res, "Error al extraer estadísticas de capacidades");
   }
   
   const data = await res.json();
@@ -71,8 +88,7 @@ export async function identifyAndExtractImage(imageBase64: string): Promise<any>
   });
   
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Error al procesar e identificar la imagen");
+    await handleResponseError(res, "Error al procesar e identificar la imagen");
   }
   
   return await res.json();
@@ -89,8 +105,7 @@ export async function generateFinalReport(metadata: ReportMetadata, competences:
   });
   
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Error al procesar el Informe Diagnostico");
+    await handleResponseError(res, "Error al procesar el Informe Diagnostico");
   }
   
   const data = await res.json();
@@ -113,8 +128,7 @@ export async function generatePedagogicalDocument(
   });
   
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Error al generar el documento pedagógico");
+    await handleResponseError(res, "Error al generar el documento pedagógico");
   }
   
   const data = await res.json();

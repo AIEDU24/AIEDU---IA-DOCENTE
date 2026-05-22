@@ -161,14 +161,15 @@ app.post("/api/gemini/extract-capacities", async (req, res) => {
     const model = "gemini-3.5-flash";
     const prompt = `
       Actúa como un especialista en análisis de datos pedagógicos. 
-      Extrae con precisión todos los datos numéricos de esta imagen de la "Estadística de las capacidades según competencia".
-      La imagen contiene una tabla con:
-      - Secciones del grado
-      - Capacidades evaluadas por competencia
-      - Porcentajes (%) de logro por cada capacidad y sección.
+      Extrae con precisión todos los datos cuantitativos de esta imagen de la "Estadística de las capacidades según competencia".
+      La imagen contiene una tabla que muestra el desempeño o porcentajes de logro por secciones y capacidades individuales de la competencia.
 
-      Devuelve los datos en un formato estructurado (JSON) que incluya:
-      - resultados: un array de objetos por sección con { seccion, capacidades: [{ nombre, porcentaje }] }
+      Extrae en la clave "resultados" un array de objetos por grado/sección con un sub-array en la clave "capacities". 
+      Tanto la clave en español "capacidades" como inglés "capacities" se deben consolidar bajo la clave "capacities" exigida en el esquema JSON de salida.
+      
+      Importante:
+      - nombre: El nombre o código de la capacidad (ej. "C1", "Capacidad 1", "Traduce cantidades").
+      - porcentaje: El porcentaje de logro (ej. "31%", "22", "80%" o "-" o "N.E." si no hay datos o la columna está vacía). Se extrae como cadena de texto (string) exactamente como aparece en la imagen para máxima robustez pedagógica.
     `;
 
     const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
@@ -200,7 +201,7 @@ app.post("/api/gemini/extract-capacities", async (req, res) => {
                       type: Type.OBJECT,
                       properties: {
                         nombre: { type: Type.STRING },
-                        porcentaje: { type: Type.NUMBER }
+                        porcentaje: { type: Type.STRING }
                       },
                       required: ["nombre", "porcentaje"]
                     }
@@ -237,20 +238,48 @@ app.post("/api/gemini/identify-image", async (req, res) => {
       1. Una tabla de "Resultados por nivel de logro" (contiene secciones, N° de estudiantes, y niveles Inicio, Proceso, Logrado, Destacado).
       2. Una tabla de "Estadística de las capacidades" (contiene secciones y porcentajes por capacidades específicas).
 
-      Luego, extrae los datos según el tipo identificado.
+      Luego, extrae los datos en la propiedad "data" según la estructura exacta:
       
-      Si es TIPO 1 (Resultados):
-      - Extrae el número de competencia si aparece (ej. "Competencia 1").
-      - Extrae los resultados por sección: { seccion, evaluados, inicio: { n, pct }, proceso: { n, pct }, logrado: { n, pct }, destacado: { n, pct } }.
+      Si es TIPO 1 (RESULTS):
+      - Extrae el número de competencia si aparece (ej. "Competencia 1") en el campo raíz "competenceNumber".
+      - "data" debe ser un objeto con:
+        {
+          "competence": number,
+          "resultados": [
+            { 
+              "seccion": string, 
+              "evaluados": number, 
+              "inicio": { "n": number, "pct": number }, 
+              "proceso": { "n": number, "pct": number }, 
+              "logrado": { "n": number, "pct": number }, 
+              "destacado": { "n": number, "pct": number } 
+            }
+          ]
+        }
 
-      Si es TIPO 2 (Capacidades):
-      - Extrae los resultados por sección: { seccion, capacidades: [{ nombre, porcentaje }] }.
+      Si es TIPO 2 (CAPACITIES):
+      - "data" debe ser un objeto estructurado idénticamente al endpoint de estimación de capacidades:
+        {
+          "resultados": [
+            {
+              "seccion": string,
+              "capacities": [
+                {
+                  "nombre": string,
+                  "porcentaje": string
+                }
+              ]
+            }
+          ]
+        }
+        
+      Nota de extracción para TIPO 2 capacities.porcentaje: Extraerlo siempre como una cadena de texto (string). Por ejemplo: "31%", "22", "80%", o "-" o "N/E" si no hay datos. Esto previene fallos ante celdas en blanco o guiones.
 
       Devuelve un JSON con:
       {
         "type": "RESULTS" | "CAPACITIES",
         "competenceNumber": number | null,
-        "data": { ...datos extraídos... }
+        "data": { ...objeto data extraído coincidiendo con las estructuras indicadas... }
       }
     `;
 

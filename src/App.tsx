@@ -339,7 +339,7 @@ export default function App() {
         });
       } catch (err) {
         console.error("Error processing bulk file:", err);
-        setError("Error al procesar uno de los archivos.");
+        setError(err instanceof Error ? err.message : "Error al procesar uno de los archivos.");
       } finally {
         setBulkProgress(p => ({ ...p, current: p.current + 1 }));
       }
