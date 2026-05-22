@@ -62,6 +62,56 @@ Para que el sistema funcione, debes configurar tu clave de API de Gemini:
   }
 };
 
+// Helper to sanitize extracted results data (converts string numbers and % to real numeric outputs safely)
+function sanitizeResultsData(rawText: string, competenceNumber: number): string {
+  try {
+    const rawData = typeof rawText === 'string' ? JSON.parse(rawText) : rawText;
+    
+    const toNum = (val: any): number => {
+      if (val === undefined || val === null) return 0;
+      if (typeof val === 'number') return val;
+      const clean = String(val).replace(/%/g, '').trim();
+      if (clean === '-' || clean.toLowerCase() === 'ne' || clean.toLowerCase() === 'n.e.' || clean === '') {
+        return 0;
+      }
+      const parsed = parseFloat(clean);
+      return isNaN(parsed) ? 0 : parsed;
+    };
+
+    const sanitizedResultados = (rawData.resultados || []).map((row: any) => {
+      return {
+        seccion: String(row.seccion || ""),
+        evaluados: toNum(row.evaluados),
+        inicio: {
+          n: toNum(row.inicio?.n),
+          pct: toNum(row.inicio?.pct)
+        },
+        proceso: {
+          n: toNum(row.proceso?.n),
+          pct: toNum(row.proceso?.pct)
+        },
+        logrado: {
+          n: toNum(row.logrado?.n),
+          pct: toNum(row.logrado?.pct)
+        },
+        destacado: {
+          n: toNum(row.destacado?.n),
+          pct: toNum(row.destacado?.pct)
+        }
+      };
+    });
+
+    return JSON.stringify({
+      competence: rawData.competence ? toNum(rawData.competence) : competenceNumber,
+      resultados: sanitizedResultados,
+      notas: rawData.notas || ""
+    });
+  } catch (err) {
+    console.error("Error sanitizing raw extraction text:", err);
+    return rawText;
+  }
+}
+
 // API Route: Extract competence results from image
 app.post("/api/gemini/extract-data", async (req, res) => {
   try {
@@ -72,19 +122,16 @@ app.post("/api/gemini/extract-data", async (req, res) => {
     
     const model = "gemini-3.5-flash";
     const prompt = `
-      Actúa como un especialista en análisis de datos pedagógicos. 
-      Extrae con precisión todos los datos numéricos de esta imagen de resultados de evaluación diagnóstica para la Competencia ${competenceNumber}.
-      La imagen contiene una tabla con:
-      - Secciones del grado
-      - N° de estudiantes evaluados
-      - Resultados por nivel de logro: En inicio, En proceso, Logrado y Destacado (con N° y %).
+      Actúa como un especialista en análisis de datos pedagógicos y experto en OCR.
+      Extrae con precisión todos los datos cuantitativos de esta imagen de resultados de evaluación diagnóstica para la Competencia ${competenceNumber}.
+      La imagen contiene una tabla que muestra el número de evaluados y la cantidad de estudiantes por secciones (En inicio, En proceso, Logrado y Destacado) con sus números (N°) y porcentajes (%).
 
-      Devuelves los datos en un formato estructurado (JSON) que incluya:
-      - competencia: ${competenceNumber}
-      - resultados: un array de objetos por sección con { seccion, evaluados, inicio: { n, pct }, proceso: { n, pct }, logrado: { n, pct }, destacado: { n, pct } }
+      Devuelve los datos en formato JSON estruturado.
       
-      Verifica internamente que los porcentajes sean coherentes con el N° de estudiantes evaluados. 
-      Si detectas inconsistencias menores, ajústalos y añade una nota explicativa.
+      Reglas cruciales para que la API no falle con la estructura estricta de Gemini:
+      - Extrae ABSOLUTAMENTE TODO como cadenas de texto (string). Esto evita que falle cuando hay guiones (-), celdas vacías o el símbolo de porcentaje.
+      - Para las claves "n" y "pct", si la celda tiene un guión o está en blanco, escribe "-" o "0%".
+      - Para la sección, captura exactamente la letra o nombre (ej: "A", "Sección B", "U").
     `;
 
     const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
@@ -104,46 +151,48 @@ app.post("/api/gemini/extract-data", async (req, res) => {
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            competence: { type: Type.NUMBER },
+            competence: { type: Type.STRING },
             resultados: {
               type: Type.ARRAY,
               items: {
                 type: Type.OBJECT,
                 properties: {
                   seccion: { type: Type.STRING },
-                  evaluados: { type: Type.NUMBER },
+                  evaluados: { type: Type.STRING },
                   inicio: {
                     type: Type.OBJECT,
-                    properties: { n: { type: Type.NUMBER }, pct: { type: Type.NUMBER } },
+                    properties: { n: { type: Type.STRING }, pct: { type: Type.STRING } },
                     required: ["n", "pct"]
                   },
                   proceso: {
                     type: Type.OBJECT,
-                    properties: { n: { type: Type.NUMBER }, pct: { type: Type.NUMBER } },
+                    properties: { n: { type: Type.STRING }, pct: { type: Type.STRING } },
                     required: ["n", "pct"]
                   },
                   logrado: {
                     type: Type.OBJECT,
-                    properties: { n: { type: Type.NUMBER }, pct: { type: Type.NUMBER } },
+                    properties: { n: { type: Type.STRING }, pct: { type: Type.STRING } },
                     required: ["n", "pct"]
                   },
                   destacado: {
                     type: Type.OBJECT,
-                    properties: { n: { type: Type.NUMBER }, pct: { type: Type.NUMBER } },
+                    properties: { n: { type: Type.STRING }, pct: { type: Type.STRING } },
                     required: ["n", "pct"]
                   },
                 },
                 required: ["seccion", "evaluados", "inicio", "proceso", "logrado", "destacado"]
               }
             },
-            notas: { type: Type.STRING, description: "Notas sobre correcciones o inconsistencias detectadas" }
+            notas: { type: Type.STRING, description: "Notas aclaratorias" }
           },
           required: ["competence", "resultados"]
         }
       }
     });
 
-    res.json({ text: response.text || "" });
+    const rawText = response.text || "{}";
+    const sanitizedText = sanitizeResultsData(rawText, Number(competenceNumber));
+    res.json({ text: sanitizedText });
   } catch (err: any) {
     console.error("Error in extract-data:", err);
     res.status(500).json({ error: err.message });
@@ -309,7 +358,12 @@ app.post("/api/gemini/identify-image", async (req, res) => {
       }
     });
 
-    res.json(JSON.parse(response.text || "{}"));
+    const parsed = JSON.parse(response.text || "{}");
+    if (parsed.type === "RESULTS" && parsed.data) {
+      const sanitized = sanitizeResultsData(JSON.stringify(parsed.data), parsed.competenceNumber || 1);
+      parsed.data = JSON.parse(sanitized);
+    }
+    res.json(parsed);
   } catch (err: any) {
     console.error("Error in identify-image:", err);
     res.status(500).json({ error: err.message });

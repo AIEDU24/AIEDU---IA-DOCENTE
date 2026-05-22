@@ -10,7 +10,7 @@ export function cn(...inputs: ClassValue[]) {
  * This guarantees staying far below Vercel's 4.5MB serverless body payload limit
  * and dramatically decreases upload time, while keeping excellent quality for Gemini OCR.
  */
-export function resizeImage(file: File, maxWidth = 1600, maxHeight = 1600): Promise<string> {
+export function resizeImage(file: File, maxWidth = 1200, maxHeight = 1200): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (event) => {
